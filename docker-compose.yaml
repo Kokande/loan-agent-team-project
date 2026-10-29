@@ -1,0 +1,54 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-loan_agent}
+    ports:
+      - "127.0.0.1:${RAG_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - rag_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ollama:
+    profiles: ["local"]
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:${RAG_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - rag_models:/root/.ollama
+
+  rag:
+    profiles: ["tools"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.rag
+    environment:
+      RAG_DATABASE_URL: host=db port=5432
+      PGUSER: ${POSTGRES_USER:-rag}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-rag_local_only}
+      PGDATABASE: ${POSTGRES_DB:-loan_agent}
+      RAG_EMBEDDING_PROVIDER: ${RAG_EMBEDDING_PROVIDER:-ollama}
+      RAG_OLLAMA_URL: http://ollama:11434
+      RAG_EMBEDDING_API_BASE_URL: ${RAG_EMBEDDING_API_BASE_URL:-}
+      RAG_EMBEDDING_API_KEY: ${RAG_EMBEDDING_API_KEY:-}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-}
+      RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-1024}
+      RAG_EMBEDDING_TIMEOUT: ${RAG_EMBEDDING_TIMEOUT:-120}
+      RAG_EMBEDDING_BATCH_SIZE: ${RAG_EMBEDDING_BATCH_SIZE:-16}
+      RAG_CHUNK_SIZE: ${RAG_CHUNK_SIZE:-1600}
+      RAG_CHUNK_OVERLAP: ${RAG_CHUNK_OVERLAP:-200}
+    volumes:
+      - ./data/regulations:/documents:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  rag_postgres:
+  rag_models:
